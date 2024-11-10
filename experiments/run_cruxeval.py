@@ -213,7 +213,7 @@ def main():
         args.model,
         revision=args.revision,
         trust_remote_code=args.trust_remote_code,
-        use_auth_token=args.use_auth_token,
+        # use_auth_token=args.use_auth_token,
         truncation_side="left",
         padding_side="right",
     )

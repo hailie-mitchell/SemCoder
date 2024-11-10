@@ -82,7 +82,7 @@ assert f({input}) == ??
 
 def make_direct_input_prompt(s):
     code, output = s
-    return f"""You will be given a function f and an output in the form f(??) == output. Find any input such that executing f on the input leads to the given output. There may be multiple answers, but you should only output one. In [ANSWER] and [/ANSWER] tags, complete the assertion with one such input that will produce the output when executing the function.
+    return f"""You will be given a function and an output in the form function(??) == output. Find any input such that executing function on the input leads to the given output. There may be multiple answers, but you should only output one. In [ANSWER] and [/ANSWER] tags, complete the assertion with one such input that will produce the output when executing the function.
 
 [PYTHON]
 def f(my_list):
@@ -115,7 +115,7 @@ assert f(??) == {output}
 
 def make_cot_input_prompt(s):
     code, output = s
-    return f"""You will be given a function f and an output in the form f(??) == output. Your task is to find any input such that executing f on the input leads to the given output. There may be multiple answers, but only output one. First, think step by step. You MUST surround the answer with [ANSWER] and [/ANSWER] tags. Express your answer as a passing assertion containing the input and the given output.
+    return f"""You will be given a function and an output in the form function(??) == output. Your task is to find any input such that executing function on the input leads to the given output. There may be multiple answers, but only output one. First, think step by step. You MUST surround the answer with [ANSWER] and [/ANSWER] tags. Express your answer as a passing assertion containing the input and the given output.
 
 [PYTHON]
 def f(x):

@@ -75,7 +75,6 @@ dependencies:
     - fastjsonschema==2.20.0
     - filelock==3.13.1
     - fire==0.6.0
-    - flash-attn==2.4.1
     - fonttools==4.44.1
     - fqdn==1.5.1
     - frozenlist==1.4.0

@@ -20,6 +20,7 @@ from typing import Optional
 
 from experiments.cruxeval_prompts import *
 
+BREAKER_DATA_PATH = '/home/hm3075/SemCoderBreakers/cruxeval/validated/perturbed/format/cruxeval_tab_indent_s0_eval.jsonl'
 
 @dataclass
 class EvalArguments:
@@ -212,7 +213,7 @@ class InputPrediction(Task):
     answers, generation settings and evaluation methods.
     """
 
-    DATASET_PATH = "cruxeval-org/cruxeval"
+    DATASET_PATH = BREAKER_DATA_PATH
     DATASET_NAME = None
 
     def __init__(self, cot = False, forward_monologue = False, backward_monologue = False, **kwargs):
@@ -227,7 +228,8 @@ class InputPrediction(Task):
 
     def get_dataset(self):
         """Returns dataset for the task or an iterable of any object, that get_prompt can handle"""
-        return self.dataset["test"]
+        return self.dataset
+        # return self.dataset["test"]
 
     def get_prompt(self, doc):
         # replace single quote to double quote: forward_monologue fine-tuning requires this
@@ -266,7 +268,7 @@ class OutputPrediction(Task):
     answers, generation settings and evaluation methods.
     """
 
-    DATASET_PATH = "cruxeval-org/cruxeval"
+    DATASET_PATH = BREAKER_DATA_PATH
     DATASET_NAME = None
 
     def __init__(self, cot = False, forward_monologue = False, annotate_src = False, **kwargs):
@@ -283,7 +285,7 @@ class OutputPrediction(Task):
 
     def get_dataset(self):
         """Returns dataset for the task or an iterable of any object, that get_prompt can handle"""
-        return self.dataset["test"]
+        return self.dataset #["test"]
 
     def get_prompt(self, doc):
         # replace single quote to double quote: forward_monologue fine-tuning requires this

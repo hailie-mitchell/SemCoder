@@ -6,9 +6,9 @@
 ##########################################################################################
 export CUDA_VISIBLE_DEVICES=0
 
-CRUXEVAL_HOME="/proj/arise/arise/yd2447/cruxeval"
+CRUXEVAL_HOME="/home/hm3075/cruxeval"
 SEMCODER_HOME=$(pwd)
-MODEL=semcoder/semcoder_s
+MODEL=semcoder/semcoder_s_1030
 
 ########################### 
 # CRUXEval-I: run inference
@@ -33,7 +33,7 @@ python experiments/run_cruxeval.py \
     --max_length_generation 4096 \
     --precision fp16 \
     --limit 800 \
-    --temperature 0.2 \
+    --temperature 0.0 \
     --save_generations \
     --save_generations_path ${direct_pred_dir}/results.json \
     --start 0 \
@@ -57,7 +57,7 @@ python experiments/run_cruxeval.py \
     --max_length_generation 4096 \
     --precision fp16 \
     --limit 800 \
-    --temperature 0.2 \
+    --temperature 0.0 \
     --save_generations \
     --save_generations_path ${monologue_pred_dir}/results.json \
     --start 0 \
@@ -120,7 +120,7 @@ python experiments/run_cruxeval.py \
     --max_length_generation 4096 \
     --precision fp16 \
     --limit 800 \
-    --temperature 0.2 \
+    --temperature 0.0 \
     --save_generations \
     --save_generations_path ${direct_pred_dir}/results.json \
     --start 0 \
@@ -144,7 +144,7 @@ python experiments/run_cruxeval.py \
     --max_length_generation 4096 \
     --precision fp16 \
     --limit 800 \
-    --temperature 0.2 \
+    --temperature 0.0 \
     --save_generations \
     --save_generations_path ${monologue_pred_dir}/results.json \
     --start 0 \
