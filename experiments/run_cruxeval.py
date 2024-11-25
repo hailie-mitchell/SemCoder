@@ -122,24 +122,9 @@ def parse_args():
         help="Whether to use CoT",
     )
     parser.add_argument(
-        "--forward_monologue",
+        "--monologue",
         action="store_true",
-        help="Whether to use forward_monologue reasoning",
-    )
-    parser.add_argument(
-        "--annotate_src",
-        action="store_true",
-        help="Whether to annotate the source code",
-    )
-    parser.add_argument(
-        "--prompt_prefix",
-        action="store_true",
-        help="Whether to add a prompt prefix: this is only used to evaluate the multitask joint training",
-    )
-    parser.add_argument(
-        "--backward_monologue",
-        action="store_true",
-        help="Whether to use execution deduction",
+        help="Whether to use monologue reasoning",
     )
     parser.add_argument(
         "--save_generations",
@@ -213,7 +198,7 @@ def main():
         args.model,
         revision=args.revision,
         trust_remote_code=args.trust_remote_code,
-        # use_auth_token=args.use_auth_token,
+        use_auth_token=args.use_auth_token,
         truncation_side="left",
         padding_side="right",
     )

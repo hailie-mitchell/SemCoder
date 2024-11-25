@@ -2,6 +2,7 @@
 
 from math import ceil
 import numpy as np
+import torch
 from vllm import SamplingParams
 from torch.utils.data import DataLoader
 import json
@@ -10,6 +11,7 @@ from warnings import warn
 from datasets import load_dataset, Dataset
 from pprint import pprint
 import math
+import random
 import warnings
 from collections import defaultdict
 from torch.utils.data import IterableDataset
@@ -20,7 +22,7 @@ from typing import Optional
 
 from experiments.cruxeval_prompts import *
 
-BREAKER_DATA_PATH = '/home/hm3075/SemCoderBreakers/cruxeval/validated/perturbed/format/cruxeval_tab_indent_s0_eval.jsonl'
+BREAKER_DATA_PATH = '/home/hm3075/cruxeval/data/cruxeval.jsonl'
 
 @dataclass
 class EvalArguments:
@@ -87,6 +89,7 @@ class TokenizedDataset(IterableDataset):
     def __iter__(self):
         prompts = []
         row_idxs = []
+        task_idxs = []
         for sample in range(self.n_tasks):
             dataset_sample = self.dataset[sample]
             # replace single quote to double quote: forward_monologue fine-tuning requires this
@@ -98,6 +101,7 @@ class TokenizedDataset(IterableDataset):
             prompt = self.prefix + prompt_contents
             prompts.append(prompt)
             row_idxs.append(dataset_sample["row_index"])
+            task_idxs.append(torch.tensor(int(dataset_sample["id"].split('_')[1])))
 
         return_token_type_ids = None  # default
 
@@ -113,6 +117,7 @@ class TokenizedDataset(IterableDataset):
         for sample in range(self.n_tasks):
             for _ in range(self.n_copies):
                 yield {
+                    "task_index": task_idxs[sample],
                     "row_index": row_idxs[sample],
                     "prompt": prompts[sample],
                     "ids": outputs.input_ids[sample],
@@ -131,7 +136,7 @@ class Task(ABC):
     # The name of a subset within `DATASET_PATH`.
     DATASET_NAME: str = None
 
-    def __init__(self, stop_words=None, requires_execution=True):
+    def __init__(self, stop_words=None, requires_execution=True, shuffle=False, seed=0):
         """
         :param stop_words: list
             list of stop words if the generation uses a stopping criteria during generation
@@ -141,7 +146,12 @@ class Task(ABC):
         self.stop_words = stop_words
         self.requires_execution = requires_execution
         try:
-            self.dataset = load_dataset(path=self.DATASET_PATH, name=self.DATASET_NAME)
+            dataset = load_dataset(path=self.DATASET_PATH, name=self.DATASET_NAME)
+            # dataset_rows = range(dataset.num_rows)
+            # dataset = dataset.add_column("task_index", dataset_rows)
+            if shuffle:
+                dataset = dataset.shuffle(seed=seed)
+            self.dataset = dataset
         except:
             with open(self.DATASET_PATH, "r") as f:
                 lines = f.readlines()
@@ -153,8 +163,12 @@ class Task(ABC):
             for l in lines_json:
                 for k in columns:
                     data[k].append(l[k])
-            data = Dataset.from_dict(data)
-            self.dataset = data
+            dataset = Dataset.from_dict(data)
+            # dataset_rows = range(dataset.num_rows)
+            # dataset = dataset.add_column("task_index", dataset_rows)
+            if shuffle:
+                dataset = dataset.shuffle(seed=seed)
+            self.dataset = dataset
             warn(
                 "This task will use a locally downloaded dataset, not from the HF hub."
             )
@@ -213,33 +227,35 @@ class InputPrediction(Task):
     answers, generation settings and evaluation methods.
     """
 
+    # DATASET_PATH = "cruxeval-org/cruxeval"
     DATASET_PATH = BREAKER_DATA_PATH
     DATASET_NAME = None
 
-    def __init__(self, cot = False, forward_monologue = False, backward_monologue = False, **kwargs):
+    def __init__(self, cot=False, monologue=False, shuffle=False, seed=0):
         self.cot = cot
-        self.forward_monologue = forward_monologue
-        self.backward_monologue = backward_monologue
-        self.kwargs = kwargs
+        self.monologue = monologue
         super().__init__(
             stop_words=["[/ANSWER]"],
             requires_execution=False,
+            shuffle=shuffle,
+            seed=seed,
         )
 
     def get_dataset(self):
         """Returns dataset for the task or an iterable of any object, that get_prompt can handle"""
-        return self.dataset
         # return self.dataset["test"]
+        return self.dataset
 
     def get_prompt(self, doc):
         # replace single quote to double quote: forward_monologue fine-tuning requires this
         doc["code"] = doc["code"].replace("'", '"')
         doc["output"] = doc["output"].replace("'", '"')
+        # cot and monologue cannot be both true
+        assert not (self.cot and self.monologue), "cot and monologue cannot be both true"
         if self.cot:
             return make_cot_input_prompt((doc["code"], doc["output"]))
-        elif self.backward_monologue:
-            prompt_prefix = self.kwargs.get('prompt_prefix', False)
-            return make_backward_monologue_input_prompt((doc["code"], doc["output"]), prefix=prompt_prefix)
+        elif self.monologue:
+            return make_backward_monologue_input_prompt((doc["code"], doc["output"]))
         else:
             return make_direct_input_prompt((doc["code"], doc["output"]))
 
@@ -251,7 +267,7 @@ class InputPrediction(Task):
         assert generation.startswith(prompt), print(generation, prompt)
 
         generation = generation[len(prompt):]
-        if self.cot or self.forward_monologue:
+        if self.cot or self.monologue:
             if "[ANSWER]" in generation:
                 generation = generation.split("[ANSWER]")[1].strip()
         if "==" in generation:
@@ -268,44 +284,37 @@ class OutputPrediction(Task):
     answers, generation settings and evaluation methods.
     """
 
+    # DATASET_PATH = "cruxeval-org/cruxeval"
     DATASET_PATH = BREAKER_DATA_PATH
     DATASET_NAME = None
 
-    def __init__(self, cot = False, forward_monologue = False, annotate_src = False, **kwargs):
+    def __init__(self, cot=False, monologue=False, shuffle=False, seed=0):
         self.cot = cot
-        self.forward_monologue = forward_monologue
-        self.annotate_src = annotate_src
-        self.kwargs = kwargs
+        self.monologue = monologue
         stop_words = ["[/ANSWER]"]
 
         super().__init__(
             stop_words=stop_words,
             requires_execution=False,
+            shuffle=shuffle,
+            seed=seed,
         )
 
     def get_dataset(self):
         """Returns dataset for the task or an iterable of any object, that get_prompt can handle"""
-        return self.dataset #["test"]
+        # return self.dataset["test"]
+        return self.dataset
 
     def get_prompt(self, doc):
         # replace single quote to double quote: forward_monologue fine-tuning requires this
         doc["code"] = doc["code"].replace("'", '"')
         doc["input"] = doc["input"].replace("'", '"')
+        # cot and monologue cannot be both true
+        assert not (self.cot and self.monologue), "cot and monologue cannot be both true"
         if self.cot:
             return make_cot_output_prompt((doc["code"], doc["input"]))
-        elif self.forward_monologue:
-            prompt_prefix = self.kwargs.get('prompt_prefix', False)
-            if self.annotate_src:
-                code = doc["code"]
-                # annotate each line with a comment: # [Lx]
-                code = code.split("\n")
-                for i, line in enumerate(code, 1):
-                    if line.strip() != "":
-                        code[i-1] = f"{line} # [L{i + 4}]"
-                code = "\n".join(code)
-                return make_forward_monologue_output_prompt((code, doc["input"]), prefix=prompt_prefix)
-            else:
-                return make_forward_monologue_output_prompt((doc["code"], doc["input"]), prefix=prompt_prefix)
+        elif self.monologue:
+            return make_forward_monologue_output_prompt((doc["code"], doc["input"]))
         else:
             return make_direct_output_prompt((doc["code"], doc["input"]))
 
@@ -317,7 +326,7 @@ class OutputPrediction(Task):
         assert generation.startswith(prompt), print(generation, prompt)
         generation = generation[len(prompt):]
 
-        if self.cot or self.forward_monologue:
+        if self.cot or self.monologue:
             if "[ANSWER]" in generation:
                 generation = generation.split("[ANSWER]")[1].strip()
         if "==" in generation:
@@ -335,10 +344,9 @@ TASK_REGISTRY = {
 ALL_TASKS = sorted(list(TASK_REGISTRY))
 
 
-def get_task(task_name, cot = False, forward_monologue = False, backward_monologue = False, annotate_src = False, **kwargs):
-    prompt_prefix = kwargs.get('prompt_prefix', False)
+def get_task(task_name, cot=False, monologue=False, shuffle=False, seed=0):
     try:
-        return TASK_REGISTRY[task_name](cot = cot, forward_monologue = forward_monologue, backward_monologue = backward_monologue, annotate_src = annotate_src, prompt_prefix=prompt_prefix)
+        return TASK_REGISTRY[task_name](cot=cot, monologue=monologue, shuffle=shuffle, seed=seed)
     except KeyError:
         print("Available tasks:")
         pprint(TASK_REGISTRY)
@@ -365,10 +373,10 @@ def complete_code(
             inputs = batch["ids"][:, : batch["input_len"]].tolist()
             num_tokens = len(inputs[0])
             if max_length_generation - num_tokens < 0:
-                code_gens[int(batch["row_index"][0])].extend([""] * batch_size)
-                code_gens_raw[int(batch["row_index"][0])].extend([""] * batch_size)
+                code_gens[int(batch["task_index"][0])].extend([""] * batch_size)
+                code_gens_raw[int(batch["task_index"][0])].extend([""] * batch_size)
                 warnings.warn(
-                    f"Skipping task {batch['row_index'][0]} because it is too long -- [{max_length_generation=}|{num_tokens=}]"
+                    f"Skipping task {batch['task_index'][0]} because it is too long -- [{max_length_generation=}|{num_tokens=}]"
                 )
                 continue
             sampling_params.max_tokens = max_length_generation - num_tokens
@@ -377,13 +385,14 @@ def complete_code(
             )
 
             generated_tasks = batch["row_index"].repeat(batch_size)
+            task_idxs = batch["task_index"].repeat(batch_size)
             generated_texts = [o.text for o in outputs[0].outputs]
             combined_texts = [
                 batch["prompt"][0] + generated_text for generated_text in generated_texts
             ]
 
             # write the logs of raw generations
-            for task_idx, text in zip(generated_tasks, generated_texts):
+            for task_idx, text in zip(task_idxs, generated_texts):
                 d = {}
                 task_idx = int(task_idx.item())
                 d["task_idx"] = task_idx
@@ -392,10 +401,11 @@ def complete_code(
                 f.write(json.dumps(d) + "\n")
                 f.flush()
                     
-            for task_idx, text in zip(generated_tasks, combined_texts):
+            for row_idx, task_idx, text in zip(generated_tasks, task_idxs, combined_texts):
+                row_idx = int(row_idx.item())
                 task_idx = int(task_idx.item())
                 if postprocess:
-                    text_processed = task.postprocess_generation(text, task_idx)
+                    text_processed = task.postprocess_generation(text, row_idx)
                 code_gens[task_idx].append(text_processed)
                 code_gens_raw[task_idx].append(text)
 
@@ -409,7 +419,10 @@ class Generator:
         self.args = args
 
     def generate(self, task_name, log_path):
-        task = get_task(task_name, cot = self.args.cot, forward_monologue = self.args.forward_monologue, backward_monologue = self.args.backward_monologue, annotate_src = self.args.annotate_src, prompt_prefix=self.args.prompt_prefix)
+        task = get_task(
+            task_name, cot=self.args.cot, monologue=self.args.monologue,
+            shuffle=self.args.shuffle, seed=self.args.seed
+        )
 
         dataset = task.get_dataset()
 
@@ -421,13 +434,14 @@ class Generator:
 
         if self.args.end is None:
             self.args.end = dataset.num_rows
+        # assert self.args.end - self.args.start <= dataset.num_rows
         dataset = dataset.select(range(self.args.start, self.args.end))
-        dataset_rows = range(dataset.num_rows)
+        # dataset_rows = range(dataset.num_rows)
 
         # shuffle the dataset
-        if self.args.shuffle:
-            dataset_rows = np.random.permutation(dataset_rows)
-            dataset = dataset.select(dataset_rows)
+        # if self.args.shuffle and not is_shuffled:
+        #     dataset_rows = np.random.permutation(dataset_rows)
+        #     dataset = dataset.select(dataset_rows)
 
         n_tasks = dataset.num_rows
 
