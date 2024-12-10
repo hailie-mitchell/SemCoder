@@ -1,14 +1,17 @@
 #!/bin/bash
 
-##########################################################################################
+###################################################################################
 # Hardware: 1x A6000 48GB GPU, or any other GPUs with at least 48GB memory
-# Note: To reproduce the results reported in the paper, do not change the hyperparameters.
-##########################################################################################
-export CUDA_VISIBLE_DEVICES=0
+# Note: We use the default hyperparameters provided by the corresponding benchmark.
+# To reproduce the results reported in the paper, do not change it.
+###################################################################################
 
-CRUXEVAL_HOME="/home/hm3075/cruxeval"
+export CUDA_VISIBLE_DEVICES=0
+export PYTHONPATH=$PYTHONPATH:/home/rc3593/SemCoder
+
+CRUXEVAL_HOME="/home/rc3593/cruxeval"
 SEMCODER_HOME=$(pwd)
-MODEL=semcoder/semcoder_s_1030
+MODEL=semcoder/semcoder_1030 # semcoder/semcoder_s_1030
 
 ########################### 
 # CRUXEval-I: run inference
@@ -16,12 +19,15 @@ MODEL=semcoder/semcoder_s_1030
 
 OPT_BASE="${SEMCODER_HOME}/output_dir/eval/cruxeval/cruxeval_input"
 
-echo "Evaluating model: ${MODEL} on CRUXEval-I (direct prediction)..."
-
 model_name=$(basename $MODEL)
+
 direct_pred_dir=${OPT_BASE}/${model_name}_direct
+monologue_pred_dir=${OPT_BASE}/${model_name}_monologue
 
 mkdir -p ${direct_pred_dir}
+mkdir -p ${monologue_pred_dir}
+
+echo "Evaluating model: ${model_name} on CRUXEval-I (direct prediction)..."
 
 python experiments/run_cruxeval.py \
     --model $MODEL \
@@ -32,18 +38,14 @@ python experiments/run_cruxeval.py \
     --n_samples 1 \
     --max_length_generation 4096 \
     --precision fp16 \
-    --limit 800 \
+    --limit 200 \
     --temperature 0.0 \
     --save_generations \
     --save_generations_path ${direct_pred_dir}/results.json \
     --start 0 \
-    --end 800 \
+    --end 200 \
     --shuffle \
     --tensor_parallel_size 1
-
-monologue_pred_dir=${OPT_BASE}/${model_name}_monologue
-
-mkdir -p ${monologue_pred_dir}
 
 echo "Evaluating model: ${model_name} on CRUXEval-I with SemCoder Monologue..."
 
@@ -56,15 +58,14 @@ python experiments/run_cruxeval.py \
     --n_samples 1 \
     --max_length_generation 4096 \
     --precision fp16 \
-    --limit 800 \
+    --limit 200 \
     --temperature 0.0 \
     --save_generations \
     --save_generations_path ${monologue_pred_dir}/results.json \
     --start 0 \
-    --end 800 \
+    --end 200 \
     --shuffle \
-    --backward_monologue \
-    --prompt_prefix \
+    --monologue \
     --tensor_parallel_size 1
 
 ########################## 
@@ -103,12 +104,15 @@ python evaluate_generations.py \
 cd $SEMCODER_HOME;
 OPT_BASE="${SEMCODER_HOME}/output_dir/eval/cruxeval/cruxeval_output"
 
-echo "Evaluating model: ${MODEL} on CRUXEval-O (direct prediction)..."
-
 model_name=$(basename $MODEL)
+
 direct_pred_dir=${OPT_BASE}/${model_name}_direct
+monologue_pred_dir=${OPT_BASE}/${model_name}_monologue
 
 mkdir -p ${direct_pred_dir}
+mkdir -p ${monologue_pred_dir}
+
+echo "Evaluating model: ${model_name} on CRUXEval-O (direct prediction)..."
 
 python experiments/run_cruxeval.py \
     --model $MODEL \
@@ -119,18 +123,14 @@ python experiments/run_cruxeval.py \
     --n_samples 1 \
     --max_length_generation 4096 \
     --precision fp16 \
-    --limit 800 \
+    --limit 200 \
     --temperature 0.0 \
     --save_generations \
     --save_generations_path ${direct_pred_dir}/results.json \
     --start 0 \
-    --end 800 \
+    --end 200 \
     --shuffle \
     --tensor_parallel_size 1
-
-monologue_pred_dir=${OPT_BASE}/${model_name}_monologue
-
-mkdir -p ${monologue_pred_dir}
 
 echo "Evaluating model: ${model_name} on CRUXEval-O with SemCoder Forward Monologue..."
 
@@ -143,21 +143,20 @@ python experiments/run_cruxeval.py \
     --n_samples 1 \
     --max_length_generation 4096 \
     --precision fp16 \
-    --limit 800 \
+    --limit 200 \
     --temperature 0.0 \
     --save_generations \
     --save_generations_path ${monologue_pred_dir}/results.json \
     --start 0 \
-    --end 800 \
+    --end 200 \
     --shuffle \
-    --forward_monologue \
-    --prompt_prefix \
-    --annotate_src \
+    --monologue \
     --tensor_parallel_size 1
 
 ########################## 
 # CRUXEval-O: Report score
 ##########################
+
 echo "Reporting score for model: ${model_name}...";
 
 python experiments/cruxeval_combine_generations.py --gen_dir ${direct_pred_dir}
@@ -182,4 +181,3 @@ python evaluate_generations.py \
     --scored_results_path ${monologue_pred_dir}/scored_results.json \
     --mode output \
     2>&1 | tee ${monologue_pred_dir}/eval.log
-
